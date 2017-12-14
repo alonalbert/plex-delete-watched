@@ -31,15 +31,27 @@ def findWatchedEpisodes(plex, sectionName, days):
   return watched
 
 
-def deleteFiles(watchedFiles):
+def deleteFiles(watchedFiles, debug=False):
+  deletedFiles = 0
+  deletedBytes = 0
   for file in watchedFiles.values():
-    print 'Deleting file %s' % file
+    if os.path.exists(file):
+      deletedFiles += 1
+      deletedBytes += os.path.getsize(file)
+      if debug:
+        print 'Will delete %s' % file
+      else:
+        os.remove(file)
+  if deletedFiles > 0:
+    if debug:
+      print 'Will delete %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
+    else:
+      print 'Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
 
 @defer.inlineCallbacks
 def deleteTorrents(watchedFiles):
   try:
     yield client.connect(host=DELEUGE_HOST, username=DELUGE_USERNAME, password=DELUGE_PASSWORD)
-    print "Connected"
     torrents = yield client.core.get_torrents_status({}, [])
 
     for torrent in torrents.values():
@@ -56,12 +68,9 @@ def deleteTorrents(watchedFiles):
 
 if __name__ == '__main__':
   plex = PlexServer(PLEX_URL, PLEX_TOKEN)
-  watchedFiles = findWatchedEpisodes(plex, '1. TV', 12)
+  watchedFiles = findWatchedEpisodes(plex, '1. TV', 14)
 
-  for file in watchedFiles.keys():
-    print '  %s' % file
-
-  deleteFiles(watchedFiles)
+  deleteFiles(watchedFiles, False)
   deleteTorrents(watchedFiles)
 
   reactor.run()
