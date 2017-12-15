@@ -1,19 +1,13 @@
+import configparser
 import datetime
 import os
 import traceback
 
-from deluge.log import setupLogger
 from deluge.ui.client import client
 from plexapi.server import PlexServer
 from twisted.internet import reactor, defer
 
-DELUGE_PASSWORD = 'nando'
-
-DELUGE_USERNAME = 'al'
-
-DELEUGE_HOST = '127.0.0.2'
-
-PLEX_URL = 'http://127.0.0.2:32400'
+PLEX_URL = 'http://10.0.0.6:32400'
 PLEX_TOKEN = ''
 
 
@@ -49,9 +43,9 @@ def deleteFiles(watchedFiles, debug=False):
       print 'Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
 
 @defer.inlineCallbacks
-def deleteTorrents(watchedFiles):
+def deleteTorrents(delugeHost, delugeUsername, delugePassword, watchedFiles):
   try:
-    yield client.connect(host=DELEUGE_HOST, username=DELUGE_USERNAME, password=DELUGE_PASSWORD)
+    yield client.connect(host=delugeHost, username=delugeUsername, password=delugePassword)
     torrents = yield client.core.get_torrents_status({}, [])
 
     for torrent in torrents.values():
@@ -67,10 +61,20 @@ def deleteTorrents(watchedFiles):
 
 
 if __name__ == '__main__':
-  plex = PlexServer(PLEX_URL, PLEX_TOKEN)
+  config = configparser.ConfigParser()
+  config.read(os.path.expanduser('~/.plex-delete-watched'))
+  plexConfig = config['Plex']
+  plexUrl = plexConfig['url']
+  plexToken = plexConfig['token']
+  if plexToken== '':
+    plexToken = None
+  plex = PlexServer(plexUrl, plexToken)
   watchedFiles = findWatchedEpisodes(plex, '1. TV', 14)
 
-  deleteFiles(watchedFiles, False)
-  deleteTorrents(watchedFiles)
+  deleteFiles(watchedFiles, True)
+
+  delugeConfig = config['Deluge']
+
+  deleteTorrents(delugeConfig['host'], delugeConfig['username'], delugeConfig['password'], watchedFiles)
 
   reactor.run()
