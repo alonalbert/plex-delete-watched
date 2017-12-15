@@ -14,7 +14,7 @@ DELUGE_USERNAME = 'al'
 DELEUGE_HOST = '127.0.0.2'
 
 PLEX_URL = 'http://127.0.0.2:32400'
-PLEX_TOKEN = 'a4ZepkJYKnrKdZrqKLgs'
+PLEX_TOKEN = ''
 
 
 def findWatchedEpisodes(plex, sectionName, days):
