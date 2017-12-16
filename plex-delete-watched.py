@@ -1,80 +1,114 @@
 import configparser
 import datetime
 import os
+import sys
 import traceback
 
 from deluge.ui.client import client
 from plexapi.server import PlexServer
 from twisted.internet import reactor, defer
 
-PLEX_URL = 'http://10.0.0.6:32400'
-PLEX_TOKEN = ''
+class Main:
+  # If this is true, will only print stuff. Won't actually delete anything
+  fakeDelete = True
+  plexFiles = set([])
+  watchedFiles = {}
+
+  config = None
+
+  def __init__(self, fakeDelete):
+    self.fakeDelete = fakeDelete
+    self.config = configparser.ConfigParser()
+    self.config.read(os.path.expanduser('~/.plex-delete-watched'))
+    pass
 
 
-def findWatchedEpisodes(plex, sectionName, days):
-  cutoff = datetime.datetime.now() - datetime.timedelta(days)
-  section = plex.library.section(sectionName)
-  watched = {}
-  for episode in section.searchEpisodes(unwatched=False):
-    if episode.lastViewedAt < cutoff:
+  def run(self):
+    # Read plex sections and populate plexFiles & watchedFiles
+    self.processSections()
+
+    # Delete all watched files from disk.
+    self.deleteFiles()
+
+    # Delete torrents who have all their files watched
+    self.deleteTorrents()
+
+    reactor.run()
+
+  def processSections(self):
+    plexConfig = self.config['Plex']
+    plexUrl = plexConfig['url']
+    plexToken = plexConfig['token']
+    if plexToken== '':
+      plexToken = None
+    plex = PlexServer(plexUrl, plexToken)
+
+    sections = self.config['Sections']
+    for key, value in sections.iteritems():
+        if key.startswith('name'):
+          sectionName = value
+          sectionDuration = int(sections['duration' + key[4:]])
+          self.processSection(plex, sectionName, sectionDuration)
+
+  def processSection(self, plex, sectionName, days):
+    cutoff = datetime.datetime.now() - datetime.timedelta(days)
+    section = plex.library.section(sectionName)
+    for episode in section.searchEpisodes():
       for media in episode.media:
         for part in media.parts:
           path = part.file
-          watched[os.path.basename(path)] = path
+          filename = os.path.basename(path)
+          self.plexFiles.add(filename)
+          if episode.isWatched and episode.lastViewedAt < cutoff:
+            self.watchedFiles[filename] = path
 
-  return watched
-
-
-def deleteFiles(watchedFiles, debug=False):
-  deletedFiles = 0
-  deletedBytes = 0
-  for file in watchedFiles.values():
-    if os.path.exists(file):
-      deletedFiles += 1
-      deletedBytes += os.path.getsize(file)
-      if debug:
-        print 'Will delete %s' % file
+  def deleteFiles(self):
+    deletedFiles = 0
+    deletedBytes = 0
+    for file in self.watchedFiles.values():
+      if os.path.exists(file):
+        deletedFiles += 1
+        deletedBytes += os.path.getsize(file)
+        if self.fakeDelete:
+          print 'Will delete %s' % file
+        else:
+          os.remove(file)
+    if deletedFiles > 0:
+      if self.fakeDelete:
+        print 'Will delete %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
       else:
-        os.remove(file)
-  if deletedFiles > 0:
-    if debug:
-      print 'Will delete %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
-    else:
-      print 'Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
+        print 'Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
 
-@defer.inlineCallbacks
-def deleteTorrents(delugeHost, delugeUsername, delugePassword, watchedFiles):
-  try:
-    yield client.connect(host=delugeHost, username=delugeUsername, password=delugePassword)
-    torrents = yield client.core.get_torrents_status({}, [])
+  @defer.inlineCallbacks
+  def deleteTorrents(self):
+    delugeConfig = self.config['Deluge']
 
-    for torrent in torrents.values():
-      for file in torrent['files']:
-        if file in watchedFiles.keys():
-          print 'Removing torrent ' % torrent
-  except Exception as e:
-    traceback.print_exc()
+    try:
+      yield client.connect(host=delugeConfig['host'], username=delugeConfig['username'], password=delugeConfig['password'])
+      torrents = yield client.core.get_torrents_status({}, [])
 
-  finally:
-    client.disconnect()
-    reactor.stop()
+      for torrent in torrents.values():
+        isTorrentServedByPlex = False
+        isTorrentWatched = False
+        for file in torrent['files']:
+          filename = os.path.basename(file['path'])
+          if filename in self.plexFiles:
+            isTorrentServedByPlex = True
+          if filename not in self.watchedFiles.keys():
+            isTorrentWatched = False
+            break
+          isTorrentWatched = True
+        if isTorrentServedByPlex and isTorrentWatched:
+          if self.fakeDelete:
+            print "Will remove torrent %s" % torrent
+    except Exception as e:
+      traceback.print_exc()
 
+    finally:
+      client.disconnect()
+      reactor.stop()
 
 if __name__ == '__main__':
-  config = configparser.ConfigParser()
-  config.read(os.path.expanduser('~/.plex-delete-watched'))
-  plexConfig = config['Plex']
-  plexUrl = plexConfig['url']
-  plexToken = plexConfig['token']
-  if plexToken== '':
-    plexToken = None
-  plex = PlexServer(plexUrl, plexToken)
-  watchedFiles = findWatchedEpisodes(plex, '1. TV', 14)
+  main = Main(False)
 
-  deleteFiles(watchedFiles, True)
-
-  delugeConfig = config['Deluge']
-
-  deleteTorrents(delugeConfig['host'], delugeConfig['username'], delugeConfig['password'], watchedFiles)
-
-  reactor.run()
+  main.run()
