@@ -1,5 +1,8 @@
+#!/usr/bin/python2.7
+#
 import configparser
 import datetime
+import logging
 import os
 import sys
 import traceback
@@ -7,6 +10,8 @@ import traceback
 from deluge.ui.client import client
 from plexapi.server import PlexServer
 from twisted.internet import reactor, defer
+
+logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
 
 class Main:
   # If this is true, will only print stuff. Won't actually delete anything
@@ -21,7 +26,6 @@ class Main:
     self.config = configparser.ConfigParser()
     self.config.read(os.path.expanduser('~/.plex-delete-watched'))
     pass
-
 
   def run(self):
     # Read plex sections and populate plexFiles & watchedFiles
@@ -39,16 +43,16 @@ class Main:
     plexConfig = self.config['Plex']
     plexUrl = plexConfig['url']
     plexToken = plexConfig['token']
-    if plexToken== '':
+    if plexToken == '':
       plexToken = None
     plex = PlexServer(plexUrl, plexToken)
 
     sections = self.config['Sections']
     for key, value in sections.iteritems():
-        if key.startswith('name'):
-          sectionName = value
-          sectionDuration = int(sections['duration' + key[4:]])
-          self.processSection(plex, sectionName, sectionDuration)
+      if key.startswith('name'):
+        sectionName = value
+        sectionDuration = int(sections['duration' + key[4:]])
+        self.processSection(plex, sectionName, sectionDuration)
 
   def processSection(self, plex, sectionName, days):
     cutoff = datetime.datetime.now() - datetime.timedelta(days)
@@ -69,38 +73,76 @@ class Main:
       if os.path.exists(file):
         deletedFiles += 1
         deletedBytes += os.path.getsize(file)
-        if self.fakeDelete:
-          print 'Will delete %s' % file
-        else:
+        print 'Deleting %s' % file
+        if not self.fakeDelete:
           os.remove(file)
     if deletedFiles > 0:
-      if self.fakeDelete:
-        print 'Will delete %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
-      else:
-        print 'Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
+      print 'Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
 
   @defer.inlineCallbacks
   def deleteTorrents(self):
     delugeConfig = self.config['Deluge']
+    generalConfig = self.config['General']
+    deleteRarDurationSec = int(generalConfig['delete-rar-duration']) * 60 * 60 * 24
+
+    labels = {}
+    labelsConfig = self.config['Labels']
+    for key, value in labelsConfig.iteritems():
+      if key.startswith('name'):
+        index = key[4:]
+        name = value
+        labels[name] = {
+          'duration': (int(labelsConfig['duration' + index]) * 60 * 60 * 24),
+          'delete-data': labelsConfig['deleteData' + index] == 'True'
+        }
 
     try:
-      yield client.connect(host=delugeConfig['host'], username=delugeConfig['username'], password=delugeConfig['password'])
+      yield client.connect(host=delugeConfig['host'], username=delugeConfig['username'],
+                           password=delugeConfig['password'])
       torrents = yield client.core.get_torrents_status({}, [])
 
-      for torrent in torrents.values():
+      for torrentId, torrent in torrents.iteritems():
+        deleteTorrent = False
+        deleteData = False
+
         isTorrentServedByPlex = False
         isTorrentWatched = False
+        isRar = False
         for file in torrent['files']:
           filename = os.path.basename(file['path'])
+          if filename.endswith('.rar'):
+            isRar = True
           if filename in self.plexFiles:
             isTorrentServedByPlex = True
           if filename not in self.watchedFiles.keys():
             isTorrentWatched = False
-            break
+            continue
           isTorrentWatched = True
-        if isTorrentServedByPlex and isTorrentWatched:
-          if self.fakeDelete:
-            print "Will remove torrent %s" % torrent
+        if isTorrentServedByPlex:
+          if isTorrentWatched:
+            deleteTorrent = True
+            deleteData = True
+        elif isRar:
+          if torrent['seeding_time'] > deleteRarDurationSec:
+            deleteTorrent = True
+            deleteData = True
+
+        else:
+          label = torrent['label']
+          labelInfo = labels.get(label)
+          if labelInfo is not None:
+            if torrent['seeding_time'] > labelInfo['duration']:
+              deleteTorrent = True
+              if labelInfo['delete-data']:
+                deleteData = True
+
+        if deleteTorrent:
+          print('Deleting torrent %s' % torrent['name'])
+          if deleteData:
+            print('  Deleting torrent data')
+          if not self.fakeDelete:
+            yield client.core.remove_torrent(torrentId, deleteData)
+
     except Exception as e:
       traceback.print_exc()
 
@@ -108,7 +150,10 @@ class Main:
       client.disconnect()
       reactor.stop()
 
-if __name__ == '__main__':
-  main = Main(False)
 
-  main.run()
+if __name__ == '__main__':
+  fake = False
+  if len(sys.argv) > 1 and sys.argv[1] == '--fake':
+    fake = True
+
+  Main(fake).run()
