@@ -64,16 +64,16 @@ class Main:
           filename = os.path.basename(path)
           self.plexFiles.add(filename)
           if episode.isWatched and episode.lastViewedAt < cutoff:
-            self.watchedFiles[filename] = path
+            self.watchedFiles[filename] = (path, episode.lastViewedAt)
 
   def deleteFiles(self):
     deletedFiles = 0
     deletedBytes = 0
-    for file in self.watchedFiles.values():
+    for file, watchedAt in self.watchedFiles.values():
       if os.path.exists(file):
         deletedFiles += 1
         deletedBytes += os.path.getsize(file)
-        print 'Deleting %s' % file
+        print 'Deleting %s (watched at %s)' % (file, watchedAt)
         if not self.fakeDelete:
           os.remove(file)
     if deletedFiles > 0:
@@ -102,8 +102,10 @@ class Main:
       torrents = yield client.core.get_torrents_status({}, [])
 
       for torrentId, torrent in torrents.iteritems():
+        filename = None
         deleteTorrent = False
         deleteData = False
+        message = 'Deleting torrent %s' % torrent['name']
 
         isTorrentServedByPlex = False
         isTorrentWatched = False
@@ -122,22 +124,25 @@ class Main:
           if isTorrentWatched:
             deleteTorrent = True
             deleteData = True
+            message = message + " (watched on %s)" % self.watchedFiles[filename][1]
+
         elif isRar:
           if torrent['seeding_time'] > deleteRarDurationSec:
             deleteTorrent = True
             deleteData = True
-
+            message = message + " (seeding time: %d days)" % (torrent['seeding_time'] / 60 / 60 / 24)
         else:
           label = torrent['label']
           labelInfo = labels.get(label)
           if labelInfo is not None:
             if torrent['seeding_time'] > labelInfo['duration']:
               deleteTorrent = True
+              message = message + " (seeding time: %d days)" % (torrent['seeding_time'] / 60 / 60 / 24)
               if labelInfo['delete-data']:
                 deleteData = True
 
         if deleteTorrent:
-          print('Deleting torrent %s' % torrent['name'])
+          print(message)
           if deleteData:
             print('  Deleting torrent data')
           if not self.fakeDelete:
