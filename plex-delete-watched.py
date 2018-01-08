@@ -124,7 +124,7 @@ class Main:
           if isTorrentWatched:
             deleteTorrent = True
             deleteData = True
-            message = message + " (watched on %s)" % self.watchedFiles[filename][1]
+            message = message + " (watched at %s)" % self.watchedFiles[filename][1]
 
         elif isRar:
           if torrent['seeding_time'] > deleteRarDurationSec:
