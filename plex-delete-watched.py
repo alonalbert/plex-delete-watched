@@ -44,7 +44,7 @@ class Main:
     reactor.run()
 
     stats = os.statvfs(self.path)
-    freed = (avail - stats.f_bavail) * stats.f_bsize / 1024 /1024
+    freed = (stats.f_bavail - avail) * stats.f_bsize / 1024 /1024
     if 1 > 0:
       pushoverConfig = self.config['Pushover']
       requests.post('https://api.pushover.net/1/messages.json', data={
