@@ -47,11 +47,13 @@ class Main:
     freed = (stats.f_bavail - avail) * stats.f_bsize / 1024 /1024
     if 1 > 0:
       pushoverConfig = self.config['Pushover']
+      message = '%dmb freed on disk' % freed
       requests.post('https://api.pushover.net/1/messages.json', data={
         'user': pushoverConfig['user'],
         'token': pushoverConfig['token'],
-        'message': '%dmb freed on disk' % freed,
+        'message': message,
       })
+      print(message)
 
   def processSections(self):
     plexConfig = self.config['Plex']
@@ -158,7 +160,7 @@ class Main:
         if deleteTorrent:
           print(message)
           if deleteData:
-            print('  Deleting torrent data')
+            print('  Deleting torrent data (%dmb)' % torrent['total_size'] / 1024 / 1024)
           if not self.fakeDelete:
             yield client.core.remove_torrent(torrentId, deleteData)
 
