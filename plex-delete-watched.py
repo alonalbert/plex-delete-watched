@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import traceback
+import glob
 
 from deluge.ui.client import client
 from plexapi.server import PlexServer
@@ -92,6 +93,14 @@ class Main:
         print 'Deleting %s (watched at %s)' % (file, watchedAt)
         if not self.fakeDelete:
           os.remove(file)
+      base = file[0:file.rfind('.')]
+      srtFiles = glob.glob(base + '*.srt')
+      for srtFile in srtFiles:
+        if os.path.exists(srtFile):
+          print 'Deleting subtites file %s' % (srtFile)
+          if not self.fakeDelete:
+            os.remove(srtFile)
+
     if deletedFiles > 0:
       print 'Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
 
