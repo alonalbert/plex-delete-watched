@@ -1,5 +1,6 @@
 #!/usr/bin/python2.7
 #
+import requests
 import configparser
 import datetime
 import logging
@@ -25,9 +26,12 @@ class Main:
     self.fakeDelete = fakeDelete
     self.config = configparser.ConfigParser()
     self.config.read(os.path.expanduser('~/.plex-delete-watched'))
+    self.path = self.config['General']['path']
     pass
 
   def run(self):
+    avail = os.statvfs(self.path).f_bavail
+
     # Read plex sections and populate plexFiles & watchedFiles
     self.processSections()
 
@@ -38,6 +42,16 @@ class Main:
     self.deleteTorrents()
 
     reactor.run()
+
+    stats = os.statvfs(self.path)
+    freed = (avail - stats.f_bavail) * stats.f_bsize / 1024 /1024
+    if 1 > 0:
+      pushoverConfig = self.config['Pushover']
+      requests.post('https://api.pushover.net/1/messages.json', data={
+        'user': pushoverConfig['user'],
+        'token': pushoverConfig['token'],
+        'message': '%dmb freed on disk' % freed,
+      })
 
   def processSections(self):
     plexConfig = self.config['Plex']
@@ -160,5 +174,4 @@ if __name__ == '__main__':
   fake = False
   if len(sys.argv) > 1 and sys.argv[1] == '--fake':
     fake = True
-
   Main(fake).run()
