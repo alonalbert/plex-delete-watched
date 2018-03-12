@@ -156,20 +156,20 @@ class Main:
             deleteTorrent = True
             deleteData = True
             message = message + " (seeding time: %d days)" % (torrent['seeding_time'] / 60 / 60 / 24)
-        else:
-          label = torrent['label']
-          labelInfo = labels.get(label)
-          if labelInfo is not None:
-            if torrent['seeding_time'] > labelInfo['duration']:
-              deleteTorrent = True
-              message = message + " (seeding time: %d days)" % (torrent['seeding_time'] / 60 / 60 / 24)
-              if labelInfo['delete-data']:
-                deleteData = True
+
+        label = torrent['label']
+        labelInfo = labels.get(label)
+        if labelInfo is not None:
+          if torrent['seeding_time'] > labelInfo['duration']:
+            deleteTorrent = True
+            message = message + " (seeding time: %d days)" % (torrent['seeding_time'] / 60 / 60 / 24)
+            if labelInfo['delete-data']:
+              deleteData = True
 
         if deleteTorrent:
           print(message)
           if deleteData:
-            print('  Deleting torrent data (%dmb)' % torrent['total_size'] / 1024 / 1024)
+            print('  Deleting torrent data (%dmb)' % (torrent['total_size'] / 1024 / 1024))
           if not self.fakeDelete:
             yield client.core.remove_torrent(torrentId, deleteData)
 
