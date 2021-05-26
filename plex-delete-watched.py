@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3
 #
 import requests
 import configparser
@@ -65,7 +65,7 @@ class Main:
     plex = PlexServer(plexUrl, plexToken)
 
     sections = self.config['Sections']
-    for key, value in sections.iteritems():
+    for key, value in sections.items():
       if key.startswith('name'):
         sectionName = value
         sectionDuration = int(sections['duration' + key[4:]])
@@ -90,19 +90,19 @@ class Main:
       if os.path.exists(file):
         deletedFiles += 1
         deletedBytes += os.path.getsize(file)
-        print 'Deleting %s (watched at %s)' % (file, watchedAt)
+        print('Deleting %s (watched at %s)' % (file, watchedAt))
         if not self.fakeDelete:
           os.remove(file)
       base = file[0:file.rfind('.')]
       srtFiles = glob.glob(base + '*.srt')
       for srtFile in srtFiles:
         if os.path.exists(srtFile):
-          print 'Deleting subtites file %s' % (srtFile)
+          print('Deleting subtites file %s' % (srtFile))
           if not self.fakeDelete:
             os.remove(srtFile)
 
     if deletedFiles > 0:
-      print 'Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
+      print('Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles))
 
   @defer.inlineCallbacks
   def deleteTorrents(self):
@@ -112,7 +112,7 @@ class Main:
 
     labels = {}
     labelsConfig = self.config['Labels']
-    for key, value in labelsConfig.iteritems():
+    for key, value in labelsConfig.items():
       if key.startswith('name'):
         index = key[4:]
         name = value
@@ -124,9 +124,9 @@ class Main:
     try:
       yield client.connect(host=delugeConfig['host'], username=delugeConfig['username'],
                            password=delugeConfig['password'])
-      torrents = yield client.core.get_torrents_status({}, [])
+      torrents = yield client.core.get_torrents_status({}, ['label', 'name', 'files', 'seeding_time', 'total_size'])
 
-      for torrentId, torrent in torrents.iteritems():
+      for torrentId, torrent in torrents.items():
         filename = None
         deleteTorrent = False
         deleteData = False
