@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python3
 #
 import requests
 import configparser
@@ -42,6 +42,7 @@ class Main:
     # Delete torrents who have all their files watched
     self.deleteTorrents()
 
+    # noinspection PyUnresolvedReferences
     reactor.run()
 
     stats = os.statvfs(self.path)
@@ -65,44 +66,49 @@ class Main:
     plex = PlexServer(plexUrl, plexToken)
 
     sections = self.config['Sections']
-    for key, value in sections.iteritems():
+    for key, value in sections.items():
       if key.startswith('name'):
         sectionName = value
         sectionDuration = int(sections['duration' + key[4:]])
         self.processSection(plex, sectionName, sectionDuration)
 
   def processSection(self, plex, sectionName, days):
+    # print("Section: " + sectionName)
     cutoff = datetime.datetime.now() - datetime.timedelta(days)
     section = plex.library.section(sectionName)
     for episode in section.searchEpisodes():
+      watched = episode.isWatched
+      lastViewedAt = episode.lastViewedAt
+      # if watched:
+      #   print("Episode: %s %s" % (episode, lastViewedAt))
       for media in episode.media:
         for part in media.parts:
           path = part.file
           filename = os.path.basename(path)
           self.plexFiles.add(filename)
-          if episode.isWatched and episode.lastViewedAt < cutoff:
-            self.watchedFiles[filename] = (path, episode.lastViewedAt)
+          if watched and lastViewedAt < cutoff:
+            self.watchedFiles[filename] = (path, lastViewedAt)
 
   def deleteFiles(self):
     deletedFiles = 0
     deletedBytes = 0
-    for file, watchedAt in self.watchedFiles.values():
-      if os.path.exists(file):
+    for watchedFile, watchedAt in self.watchedFiles.values():
+      if os.path.exists(watchedFile):
         deletedFiles += 1
-        deletedBytes += os.path.getsize(file)
-        print 'Deleting %s (watched at %s)' % (file, watchedAt)
+        deletedBytes += os.path.getsize(watchedFile)
+        print('Deleting %s (watched at %s)' % (watchedFile, watchedAt))
         if not self.fakeDelete:
-          os.remove(file)
-      base = file[0:file.rfind('.')]
+          os.remove(watchedFile)
+      base = watchedFile[0:watchedFile.rfind('.')]
       srtFiles = glob.glob(base + '*.srt')
       for srtFile in srtFiles:
         if os.path.exists(srtFile):
-          print 'Deleting subtites file %s' % (srtFile)
+          print('Deleting subtites file %s' % srtFile)
           if not self.fakeDelete:
             os.remove(srtFile)
 
     if deletedFiles > 0:
-      print 'Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles)
+      print('Deleted %d GB in %d files' % (deletedBytes / 1024 / 1024 / 1024, deletedFiles))
 
   @defer.inlineCallbacks
   def deleteTorrents(self):
@@ -112,7 +118,7 @@ class Main:
 
     labels = {}
     labelsConfig = self.config['Labels']
-    for key, value in labelsConfig.iteritems():
+    for key, value in labelsConfig.items():
       if key.startswith('name'):
         index = key[4:]
         name = value
@@ -121,12 +127,13 @@ class Main:
           'delete-data': labelsConfig['deleteData' + index] == 'True'
         }
 
+    # noinspection PyBroadException
     try:
       yield client.connect(host=delugeConfig['host'], username=delugeConfig['username'],
                            password=delugeConfig['password'])
       torrents = yield client.core.get_torrents_status({}, [])
 
-      for torrentId, torrent in torrents.iteritems():
+      for torrentId, torrent in torrents.items():
         filename = None
         deleteTorrent = False
         deleteData = False
@@ -135,8 +142,8 @@ class Main:
         isTorrentServedByPlex = False
         isTorrentWatched = False
         isRar = False
-        for file in torrent['files']:
-          filename = os.path.basename(file['path'])
+        for torrentFile in torrent['files']:
+          filename = os.path.basename(torrentFile['path'])
           if filename.endswith('.rar'):
             isRar = True
           if filename in self.plexFiles:
@@ -173,11 +180,12 @@ class Main:
           if not self.fakeDelete:
             yield client.core.remove_torrent(torrentId, deleteData)
 
-    except Exception as e:
+    except Exception:
       traceback.print_exc()
 
     finally:
       client.disconnect()
+      # noinspection PyUnresolvedReferences
       reactor.stop()
 
 
