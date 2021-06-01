@@ -131,7 +131,7 @@ class Main:
     try:
       yield client.connect(host=delugeConfig['host'], username=delugeConfig['username'],
                            password=delugeConfig['password'])
-      torrents = yield client.core.get_torrents_status({}, [])
+      torrents = yield client.core.get_torrents_status({}, ['label', 'name', 'files', 'seeding_time', 'total_size'])
 
       for torrentId, torrent in torrents.items():
         filename = None
